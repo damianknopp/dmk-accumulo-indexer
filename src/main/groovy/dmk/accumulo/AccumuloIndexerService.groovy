@@ -41,11 +41,11 @@ public class AccumuloIndexerService {
 	String table;
 	int numPartitions;
 	ObjectPool connectorPool;
-	
+
 	public AccumuloIndexerService(){
 		super()
 	}
-	
+
 	/**
 	 * constructor	
 	 * @param table
@@ -57,7 +57,7 @@ public class AccumuloIndexerService {
 		this.table = table;
 		this.numPartitions = numPartitions;
 	}
-	
+
 	/**
 	 * table name in accumulo
 	 * @param table
@@ -65,137 +65,143 @@ public class AccumuloIndexerService {
 	public void setTable(String table){
 		this.table = table
 	}
-	
+
 	public String getTable(){
 		return this.table
 	}
-	
+
 	/**
 	 * how many uniq row [id] partitions to use
 	 * @param numPartitons
 	 */
 	public void setNumPartitions(int numPartitons){
-		this.numPartitions = numPartitons;	
+		this.numPartitions = numPartitons;
 	}
-	
+
 	public int getNumPartitions(){
 		return this.numPartitions
 	}
-	
+
 	/**
 	 * object pool for accumulo connectors
 	 * @param objectPool
 	 */
 	public void setConnectorPool(ObjectPool objectPool){
-		this.connectorPool = objectPool	
+		this.connectorPool = objectPool
 	}
-	
+
 	public ObjectPool getConnectorPool(){
 		return this.connectorPool
 	}
-	
+
 	/**
 	 * helper method to format accumulo row [id]
 	 * @param partition
 	 * @return
 	 */
-  public Text genPartition(int partition) {
-    return new Text(String.format("%08x", Math.abs(partition)));
-  }
-  
-  /**
-   * Index contents in String doc passed in.
-   * @param numPartitions
-   * @param docId
-   * @param doc
-   * @param splitRegex
-   * @param bw
-   * @throws Exception
-   */
-  protected void indexContents(int numPartitions, Text docId, String doc, String splitRegex, BatchWriter bw) throws Exception {
-    String[] tokens = doc.split(splitRegex);
-    Text partition = genPartition(doc.hashCode() % numPartitions);
-    Mutation m = new Mutation(partition);
-    HashSet<String> tokensSeen = new HashSet<String>();
-    
-    for (String token : tokens) {
-      token = token.toLowerCase();
-      
-      if (!tokensSeen.contains(token)) {
-        tokensSeen.add(token);
-        m.put(new Text(token), docId, new Value(new byte[0]));
-      }
-    }
-    
-    if (m.size() > 0)
-      bw.addMutation(m);
-  }
-  
-  /**
-   * Index contents of a single file
-   * @param numPartitions
-   * @param src
-   * @param splitRegex
-   * @param bw
-   * @throws Exception
-   */
-  protected void index(int numPartitions, File src, String splitRegex, BatchWriter bw) throws Exception {
-    if (src.isDirectory()) {
-      for (File child : src.listFiles()) {
-        index(numPartitions, child, splitRegex, bw);
-      }
-    } else {
-      FileReader fr = new FileReader(src);
-	  int bufSize = 4096;
-	  StringBuilder sb = new StringBuilder(bufSize * 2);
-	  char[] data = new char[bufSize];
-	  int len;
-	  try{
-	      while ((len = fr.read(data)) != -1) {
-	        sb.append(data, 0, len);
-	      }
-		  this.indexContents(numPartitions, new Text(src.getAbsolutePath()), sb.toString(), splitRegex, bw);
-	  }finally{
-	  	IOUtils.closeQuietly(fr);
-	  }
-    }
-  }
-  
-  /**
-   * Recursively read, tokenize, and index contents of the file or directories passed in
-   * @param src
-   * @param numPartitions
-   */
-  public void index(int numPartitions, File src) throws Exception {
-	  BatchWriter bw = setupBatchWriter(this.instance, this.zooKeepers, this.table, this.user, this.pass);
-	  final String splitRegex = "\\W+";
-	  try{
-	  	index(numPartitions, src, splitRegex, bw)
-	  }finally{
-	  	IOUtils.closeQuietly(bw)
-	  }
-  }
-  
-  /**
-   * 
-   * @param instance
-   * @param zooKeepers
-   * @param table
-   * @param user
-   * @param pass
-   * @return
-   * @throws Exception
-   */
-  private BatchWriter setupBatchWriter(String table) throws Exception {
-    Connector conn = this.connectorPool.borrowObject()
-	println "checking if table $table exists..."
-    def tableOpts = conn.tableOperations()
-	if(tableOpts.exists(table)){
-		println "$table already exists"
-	}else{
-		println "$table does not exist, creating..."
-		tableOpts.create(table)
+	public Text genPartition(int partition) {
+		return new Text(String.format("%08x", Math.abs(partition)));
 	}
-    return conn.createBatchWriter(table, 50000000, 300000l, 4);
-  }
+
+	/**
+	 * Index contents in String doc passed in.
+	 * @param numPartitions
+	 * @param docId
+	 * @param doc
+	 * @param splitRegex
+	 * @param bw
+	 * @throws Exception
+	 */
+	protected void indexContents(int numPartitions, Text docId, String doc, String splitRegex, BatchWriter bw) throws Exception {
+		String[] tokens = doc.split(splitRegex);
+		Text partition = genPartition(doc.hashCode() % numPartitions);
+		Mutation m = new Mutation(partition);
+		HashSet<String> tokensSeen = new HashSet<String>();
+
+		for (String token : tokens) {
+			token = token.toLowerCase();
+
+			if (!tokensSeen.contains(token)) {
+				tokensSeen.add(token);
+				m.put(new Text(token), docId, new Value(new byte[0]));
+			}
+		}
+
+		if (m.size() > 0)
+			bw.addMutation(m);
+	}
+
+	/**
+	 * Index contents of a single file
+	 * @param numPartitions
+	 * @param src
+	 * @param splitRegex
+	 * @param bw
+	 * @throws Exception
+	 */
+	protected void index(int numPartitions, File src, String splitRegex, BatchWriter bw) throws Exception {
+		if (src.isDirectory()) {
+			for (File child : src.listFiles()) {
+				index(numPartitions, child, splitRegex, bw);
+			}
+		} else {
+			FileReader fr = new FileReader(src);
+			int bufSize = 4096;
+			StringBuilder sb = new StringBuilder(bufSize * 2);
+			char[] data = new char[bufSize];
+			int len;
+			try{
+				while ((len = fr.read(data)) != -1) {
+					sb.append(data, 0, len);
+				}
+				this.indexContents(numPartitions, new Text(src.getAbsolutePath()), sb.toString(), splitRegex, bw);
+			}finally{
+				IOUtils.closeQuietly(fr);
+			}
+		}
+	}
+
+	/**
+	 * Recursively read, tokenize, and index contents of the file or directories passed in
+	 * @param src
+	 * @param numPartitions
+	 */
+	public void index(int numPartitions, File src) throws Exception {
+		BatchWriter bw = setupBatchWriter(this.instance, this.zooKeepers, this.table, this.user, this.pass);
+		final String splitRegex = "\\W+";
+		try{
+			index(numPartitions, src, splitRegex, bw)
+		}finally{
+			IOUtils.closeQuietly(bw)
+		}
+	}
+
+	/**
+	 * 
+	 * @param instance
+	 * @param zooKeepers
+	 * @param table
+	 * @param user
+	 * @param pass
+	 * @return
+	 * @throws Exception
+	 */
+	private BatchWriter setupBatchWriter(String table) throws Exception {
+		Connector conn = this.connectorPool.borrowObject()
+		println "checking if table $table exists..."
+		try{
+			def tableOpts = conn.tableOperations()
+			if(tableOpts.exists(table)){
+				println "$table already exists"
+			}else{
+				println "$table does not exist, creating..."
+				tableOpts.create(table)
+			}
+			return conn.createBatchWriter(table, 50000000, 300000l, 4);
+		}finally{
+			if(conn != null){
+				connectorPool.returnObject(conn);
+			}
+		}
+	}
 }
